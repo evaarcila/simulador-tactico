@@ -29,15 +29,15 @@ jobs:
         with:
           node-version: 20
       - name: Install dependencies
-        run: npm install
+        run: cd jerusalem-defense-github && npm install
       - name: Build the app
-        run: npm run build
+        run: cd jerusalem-defense-github && npm run build
       - name: Setup Pages
         uses: actions/configure-pages@v4
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: './dist'
+          path: './jerusalem-defense-github/dist'
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
