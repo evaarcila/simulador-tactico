@@ -1,0 +1,6 @@
+{
+  "name": "JERUSALEM DEFENSE: TACTICAL SIMULATOR",
+  "description": "Advanced tactical aerospace simulation suite. Implements real-time vector analysis, arc length logistics, and surface curvature optimization in a high-fidelity 3D war-torn environment.",
+  "requestFramePermissions": ["microphone"],
+  "majorCapabilities": []
+}
