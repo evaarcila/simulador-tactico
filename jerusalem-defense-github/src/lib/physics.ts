@@ -6,6 +6,7 @@ import { evaluate } from 'mathjs';
 
 export interface TrajectoryPoint {
   position: [number, number, number];
+  velocityVector: [number, number, number];
   velocity: number;
   curvature: number;
   time: number;
@@ -28,67 +29,137 @@ export interface MissionStats {
   quadricSurface: string;
 }
 
-/**
- * Calculates intruder trajectory based on a selected pattern or custom functions
- */
-export const calculateIntruderTrajectory = (
-  type: 'ref' | 'spiral' | 'low' | 'parabolic',
-  customFuncs?: { x: string; y: string; z: string },
+export interface CollisionResult {
+  time: number;
+  position: [number, number, number];
+  v1: [number, number, number];
+  v2: [number, number, number];
+  vf: [number, number, number];
+  resultingFunction: { x: string, y: string, z: string };
+  distance: number;
+}
+
+export const calculateIntruderTrajectoryToTarget = (
+  target: [number, number, number],
   t_max: number = 10
 ): TrajectoryPoint[] => {
   const points: TrajectoryPoint[] = [];
   const steps = 100;
-
+  // Let the intruder start high in the sky far away
+  const start: [number, number, number] = [target[0] + 150, target[1] + 200, target[2] - 150];
+  
   for (let i = 0; i <= steps; i++) {
     const t = (i / steps) * t_max;
-    let x, y, z;
+    // Linear approach to target point
+    const x = start[0] + ((target[0] - start[0]) / t_max) * t;
+    // Slight parabolic arc for visual interest, ending at target
+    const arc = Math.sin((t / t_max) * Math.PI) * 20; 
+    const y = start[1] + ((target[1] - start[1]) / t_max) * t + arc;
+    const z = start[2] + ((target[2] - start[2]) / t_max) * t;
 
-        if (customFuncs) {
-      try {
-        x = evaluate(customFuncs.x, { t });
-        y = evaluate(customFuncs.y, { t });
-        z = evaluate(customFuncs.z, { t });
-      } catch (e) {
-        // Fallback to a controlled spiral if custom equation fails
-        x = 15 * Math.cos(t / 2);
-        y = 2 + 1.2 * t;
-        z = 15 * Math.sin(t / 2);
-      }
-    } else {
-      switch (type) {
-        case 'spiral':
-          x = 15 * Math.cos(t * 0.5);
-          y = 2 + 1.2 * t;
-          z = 15 * Math.sin(t * 0.5);
-          break;
-        case 'low':
-          x = -30 + 10 * t;
-          y = 5 + Math.sin(t) * 2;
-          z = 15;
-          break;
-        case 'parabolic':
-          x = -40 + 8 * t;
-          y = 30 - 1.2 * Math.pow(t - 5, 2);
-          z = -40 + 8 * t;
-          break;
-        case 'ref':
-        default:
-          // Default matching the user's requested formula
-          x = 15 * Math.cos(t / 2);
-          y = 2 + 1.2 * t;
-          z = 15 * Math.sin(t / 2);
-          break;
-      }
-    }
-
+    const vx = (target[0] - start[0]) / t_max;
+    const vy = (target[1] - start[1]) / t_max; // Simple approx
+    const vz = (target[2] - start[2]) / t_max;
+    
     points.push({
       position: [x, y, z],
-      velocity: 0,
+      velocityVector: [vx, vy, vz],
+      velocity: Math.sqrt(vx*vx + vy*vy + vz*vz),
       curvature: 0,
       time: t
     });
   }
   return points;
+};
+
+export const getTrajectoryEquations = (
+  start: [number, number, number],
+  target: [number, number, number],
+  t_intercept: number
+) => {
+  const g = -9.81;
+  const v0 = [
+    (target[0] - start[0]) / t_intercept,
+    (target[1] - start[1] - 0.5 * g * Math.pow(t_intercept, 2)) / t_intercept,
+    (target[2] - start[2]) / t_intercept
+  ];
+  
+  const vFinal = [
+    v0[0],
+    v0[1] + g * t_intercept,
+    v0[2]
+  ];
+
+  const formatComponent = (v: number, t: string, addSign: boolean = true) => {
+      if (Math.abs(v) < 0.01) return "";
+      const sign = v >= 0 ? (addSign ? "+ " : "") : "- ";
+      return ` ${sign}${Math.abs(v).toFixed(2)}${t}`;
+  };
+
+  const formatEq = (c: number, v: number, a: number, t: string) => {
+     let eq = `${c.toFixed(1)}`;
+     if (Math.abs(v) > 0.01) eq += formatComponent(v, t, true);
+     if (Math.abs(a) > 0.01) eq += formatComponent(a, t + '²', true);
+     return eq;
+  };
+
+  const formatFinalEq = (c: number, v: number) => {
+     let eq = `${c.toFixed(1)}`;
+     if (Math.abs(v) > 0.01) eq += formatComponent(v, '(t-tc)', true);
+     return eq;
+  };
+
+  const initial = `r(t) = ⟨ ${formatEq(start[0], v0[0], 0, 't')}, ${formatEq(start[1], v0[1], 0.5*g, 't')}, ${formatEq(start[2], v0[2], 0, 't')} ⟩`;
+  const final = `r(t) = ⟨ ${formatFinalEq(target[0], vFinal[0])}, ${formatFinalEq(target[1], vFinal[1])}, ${formatFinalEq(target[2], vFinal[2])} ⟩`;
+
+  return { initial, final };
+};
+
+export const calculateCollision = (m1: TrajectoryPoint[], m2: TrajectoryPoint[]): CollisionResult => {
+  let minD = Infinity;
+  let idx = 0;
+  for (let i = 0; i < Math.min(m1.length, m2.length); i++) {
+    const p1 = m1[i].position;
+    const p2 = m2[i].position;
+    const d = Math.sqrt((p1[0]-p2[0])**2 + (p1[1]-p2[1])**2 + (p1[2]-p2[2])**2);
+    if (d < minD) {
+      minD = d;
+      idx = i;
+    }
+  }
+
+  const p1 = m1[idx];
+  const p2 = m2[idx];
+  // Midpoint as collision point
+  const colP: [number, number, number] = [
+    (p1.position[0] + p2.position[0]) / 2,
+    (p1.position[1] + p2.position[1]) / 2,
+    (p1.position[2] + p2.position[2]) / 2
+  ];
+
+  // Resulting velocity (inelastic collision, equal mass)
+  const vf: [number, number, number] = [
+    (p1.velocityVector[0] + p2.velocityVector[0]) / 2,
+    (p1.velocityVector[1] + p2.velocityVector[1]) / 2,
+    (p1.velocityVector[2] + p2.velocityVector[2]) / 2
+  ];
+
+  // Resulting function (ballistic with gravity)
+  // r(t) = P + Vf*(t-tc) + 0.5*g*(t-tc)^2
+  const tc = p1.time.toFixed(2);
+  const resX = `${colP[0].toFixed(2)} + ${vf[0].toFixed(2)}*(t-${tc})`;
+  const resY = `${colP[1].toFixed(2)} + ${vf[1].toFixed(2)}*(t-${tc}) - 4.905*(t-${tc})^2`;
+  const resZ = `${colP[2].toFixed(2)} + ${vf[2].toFixed(2)}*(t-${tc})`;
+
+  return {
+    time: p1.time,
+    position: colP,
+    v1: p1.velocityVector,
+    v2: p2.velocityVector,
+    vf,
+    resultingFunction: { x: resX, y: resY, z: resZ },
+    distance: minD
+  };
 };
 
 /**
@@ -121,6 +192,58 @@ export const analyzeTrajectoryQuadric = (points: TrajectoryPoint[]): string => {
   if (isParabolic) return "PARABOLOIDE TÁCTICO DE REVOLUCIÓN";
 
   return "CUÁDRICA HIPERBÓLICA / ESPACIAL";
+};
+
+/**
+ * Calculates custom trajectory using specific vectors.
+ * r(t) = r0 + v0*t + 0.5*a*t^2
+ */
+export const calculateCustomTrajectory = (
+  r0: [number, number, number],
+  v0: [number, number, number],
+  a: [number, number, number],
+  t_max: number = 38.45
+): TrajectoryPoint[] => {
+  const points: TrajectoryPoint[] = [];
+  const steps = 100;
+
+  for (let i = 0; i <= steps; i++) {
+    const t = (i / steps) * t_max;
+    
+    // Position r(t)
+    const r = [
+      r0[0] + v0[0] * t + 0.5 * a[0] * t * t,
+      r0[1] + v0[1] * t + 0.5 * a[1] * t * t,
+      r0[2] + v0[2] * t + 0.5 * a[2] * t * t
+    ];
+    
+    // Velocity v(t) = r'(t)
+    const v = [
+      v0[0] + a[0] * t,
+      v0[1] + a[1] * t,
+      v0[2] + a[2] * t
+    ];
+    const speed = Math.sqrt(v[0]**2 + v[1]**2 + v[2]**2);
+    
+    // Curvature κ(t)
+    const v_cross_a = [
+       (v[1] * a[2] - v[2] * a[1]),
+       (v[2] * a[0] - v[0] * a[2]),
+       (v[0] * a[1] - v[1] * a[0])
+    ];
+    const v_cross_a_mag = Math.sqrt(v_cross_a[0]**2 + v_cross_a[1]**2 + v_cross_a[2]**2);
+    const curvature = speed > 0.001 ? v_cross_a_mag / Math.pow(speed, 3) : 0;
+    
+    points.push({
+      position: [r[0], r[1], r[2]],
+      velocityVector: [v[0], v[1], v[2]],
+      velocity: speed,
+      curvature,
+      time: t
+    });
+  }
+  
+  return points;
 };
 
 /**
@@ -173,6 +296,7 @@ export const calculateTrajectory = (
     
     points.push({
       position: [r[0], r[1], r[2]],
+      velocityVector: [v[0], v[1], v[2]],
       velocity: speed,
       curvature,
       time: t
@@ -232,7 +356,7 @@ export const calculateAnalyticalStats = (
         const z = start[2] + v0[2] * t;
         if (y < minH) minH = y;
         if (y > maxH) maxH = y;
-        samplePoints.push({ position: [x, y, z], velocity: 0, curvature: 0, time: t });
+        samplePoints.push({ position: [x, y, z], velocityVector: [v0[0], v0[1] + g*t, v0[2]], velocity: getSpeed(t), curvature: 0, time: t });
     }
 
     return {
@@ -254,3 +378,4 @@ export const calculateAnalyticalStats = (
 };
 
 export const formatVector = (v: number[]) => `⟨${v.map(n => n.toFixed(2)).join(', ')}⟩`;
+
