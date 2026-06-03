@@ -1,0 +1,315 @@
+import React, { useState, useMemo, useEffect, Suspense } from 'react';
+import { Canvas } from '@react-three/fiber';
+import { OrbitControls, PerspectiveCamera, Stars, Html, Environment, Sparkles } from '@react-three/drei';
+import { motion, AnimatePresence } from 'motion/react';
+import { 
+  Shield, 
+  TrendingUp,
+  Zap,
+  Activity,
+  Target,
+  ChevronRight
+} from 'lucide-react';
+import { calculateIntruderTrajectoryToTarget, calculateTrajectory, getTrajectoryEquations, calculateCollision } from './lib/physics';
+import { Missile, Globe, Intruder } from './components/ThreeComponents';
+import { cn } from './lib/utils';
+
+export default function App() {
+  const [targetX, setTargetX] = useState('0');
+  const [targetY, setTargetY] = useState('40');
+  const [targetZ, setTargetZ] = useState('0');
+
+  const [b2X, setB2X] = useState('60');
+  const [b2Y, setB2Y] = useState('0');
+  const [b2Z, setB2Z] = useState('-60');
+
+  const [tMax, setTMax] = useState(10.0);
+  const [isLaunching, setIsLaunching] = useState(false);
+  const [impacted, setImpacted] = useState(false);
+  const [currentCoords, setCurrentCoords] = useState({ x: 0, y: 0, z: 0 });
+
+  const targetPos: [number, number, number] = [parseFloat(targetX) || 0, parseFloat(targetY) || 0, parseFloat(targetZ) || 0];
+  const launchPos1: [number, number, number] = [0, 0, 0];
+  const launchPos2: [number, number, number] = [parseFloat(b2X) || 0, parseFloat(b2Y) || 0, parseFloat(b2Z) || 0];
+
+  const intruderTrajectory = useMemo(() => {
+    return calculateIntruderTrajectoryToTarget(targetPos, tMax);
+  }, [targetX, targetY, targetZ, tMax]);
+
+  const m1Trajectory = useMemo(() => {
+    return calculateTrajectory(launchPos1, targetPos, tMax);
+  }, [launchPos1, targetX, targetY, targetZ, tMax]);
+
+  const m2Trajectory = useMemo(() => {
+    return calculateTrajectory(launchPos2, targetPos, tMax);
+  }, [b2X, b2Y, b2Z, targetX, targetY, targetZ, tMax]);
+
+  const eqM1 = useMemo(() => getTrajectoryEquations(launchPos1, targetPos, tMax), [launchPos1, targetPos, tMax]);
+  const eqM2 = useMemo(() => getTrajectoryEquations(launchPos2, targetPos, tMax), [launchPos2, targetPos, tMax]);
+
+  const collision = useMemo(() => {
+    return calculateCollision(m1Trajectory, m2Trajectory);
+  }, [m1Trajectory, m2Trajectory]);
+
+  useEffect(() => {
+    if (!isLaunching) return;
+    const interval = setInterval(() => {
+      const now = (Date.now() % 5000) / 5000;
+      if (m1Trajectory.length > 0) {
+        const idx = Math.floor(now * (m1Trajectory.length - 1));
+        const p = m1Trajectory[idx]?.position;
+        if (p) {
+          setCurrentCoords({ x: p[0], y: p[1], z: p[2] });
+        }
+      }
+    }, 50);
+    return () => clearInterval(interval);
+  }, [isLaunching, m1Trajectory]);
+
+  const initiateLaunch = () => {
+    setIsLaunching(true);
+    setImpacted(false);
+  };
+
+  const handleImpact = () => {
+    setImpacted(true);
+    setIsLaunching(false);
+  };
+
+  return (
+    <div className="h-screen w-screen relative bg-[#02050a] text-slate-300 font-sans overflow-hidden">
+      
+      <div className="absolute inset-0 z-0">
+        <Canvas shadows>
+          <Suspense fallback={
+            <Html center>
+              <div className="text-[#00f2ff] font-mono text-xs uppercase animate-pulse tracking-[0.5em] whitespace-nowrap">
+                Cargando Terreno Táctico...
+              </div>
+            </Html>
+          }>
+            <PerspectiveCamera makeDefault position={[120, 80, 150]} fov={55} />
+            <OrbitControls enableDamping dampingFactor={0.05} maxPolarAngle={Math.PI / 2 - 0.05} />
+            
+            {/* Realism Improvements */}
+            <ambientLight intensity={0.15} />
+            <hemisphereLight intensity={0.5} groundColor="#02050a" />
+            <directionalLight 
+              position={[200, 300, 200]} 
+              intensity={2.5} 
+              color="#e6f2ff" 
+              castShadow 
+              shadow-mapSize={[4096, 4096]} 
+              shadow-camera-left={-200}
+              shadow-camera-right={200}
+              shadow-camera-top={200}
+              shadow-camera-bottom={-200}
+              shadow-bias={-0.0001}
+            />
+            <pointLight position={[0, 50, 0]} intensity={15} color="#00f2ff" distance={400} decay={1.5} />
+            
+            <Environment preset="city" />
+            <Sparkles count={1500} scale={800} size={1.5} speed={0.4} opacity={0.2} color="#00f2ff" />
+            <Stars radius={300} depth={50} count={5000} factor={6} saturation={0.5} fade speed={1} />
+
+            <Globe basePos2={launchPos2} />
+            <Intruder points={intruderTrajectory} isActive={isLaunching} />
+            <Missile 
+              points={m1Trajectory} 
+              isActive={isLaunching} 
+            />
+            <Missile 
+              points={m2Trajectory} 
+              isActive={isLaunching} 
+              onComplete={handleImpact} 
+            />
+          </Suspense>
+        </Canvas>
+      </div>
+
+      <div className="absolute inset-y-0 left-0 z-10 p-4 pointer-events-none w-[460px]">
+        <motion.div 
+          initial={{ x: -20, opacity: 0 }}
+          animate={{ x: 0, opacity: 1 }}
+          className="glass-panel w-full h-full flex flex-col p-5 pointer-events-auto tactical-border overflow-hidden"
+        >
+          <div className="text-center border-b-2 border-double border-[#00f2ff]/30 pb-4 mb-4">
+             <div className="flex items-center justify-center space-x-2 mb-1">
+                <Shield className="w-5 h-5 text-[#00f2ff]" />
+                <h1 className="text-xl font-black tracking-tighter text-[#00f2ff]">JERUSALEM DEFENSE SYSTEM</h1>
+             </div>
+             <p className="text-[10px] font-mono tracking-[0.4em] opacity-40 uppercase">Advanced Tactical Aerospace v6.0</p>
+          </div>
+
+          <div className="flex-1 overflow-y-auto pr-1 space-y-4 custom-scrollbar">
+            
+            <div className="bg-[#00f2ff]/5 border border-[#1a3a4a] p-4 space-y-4">
+               <div>
+                  <span className="text-[9px] uppercase font-bold text-emerald-500 tracking-widest block mb-2">PUNTO DE INTERCEPCIÓN (TARGET)</span>
+                  <div className="space-y-2">
+                     <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[9px] font-mono text-emerald-400">X:</span>
+                        <input value={targetX} onChange={e => setTargetX(e.target.value)} type="number" className="w-full bg-black/60 border border-white/10 p-2 pl-8 font-mono text-[11px] text-emerald-400 outline-none focus:border-emerald-500/50" />
+                     </div>
+                     <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[9px] font-mono text-emerald-400">Y:</span>
+                        <input value={targetY} onChange={e => setTargetY(e.target.value)} type="number" className="w-full bg-black/60 border border-white/10 p-2 pl-8 font-mono text-[11px] text-emerald-400 outline-none focus:border-emerald-500/50" />
+                     </div>
+                     <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[9px] font-mono text-emerald-400">Z:</span>
+                        <input value={targetZ} onChange={e => setTargetZ(e.target.value)} type="number" className="w-full bg-black/60 border border-white/10 p-2 pl-8 font-mono text-[11px] text-emerald-400 outline-none focus:border-emerald-500/50" />
+                     </div>
+                  </div>
+               </div>
+               
+               <div>
+                  <span className="text-[9px] uppercase font-bold text-[#0077ff] tracking-widest block mb-2">BASE LANZAMIENTO 2 (M2)</span>
+                  <div className="space-y-2">
+                     <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[9px] font-mono text-[#0077ff]">X:</span>
+                        <input value={b2X} onChange={e => setB2X(e.target.value)} type="number" className="w-full bg-black/60 border border-white/10 p-2 pl-8 font-mono text-[11px] text-[#0077ff] outline-none focus:border-[#0077ff]/50" />
+                     </div>
+                     <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[9px] font-mono text-[#0077ff]">Y:</span>
+                        <input value={b2Y} onChange={e => setB2Y(e.target.value)} type="number" className="w-full bg-black/60 border border-white/10 p-2 pl-8 font-mono text-[11px] text-[#0077ff] outline-none focus:border-[#0077ff]/50" />
+                     </div>
+                     <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[9px] font-mono text-[#0077ff]">Z:</span>
+                        <input value={b2Z} onChange={e => setB2Z(e.target.value)} type="number" className="w-full bg-black/60 border border-white/10 p-2 pl-8 font-mono text-[11px] text-[#0077ff] outline-none focus:border-[#0077ff]/50" />
+                     </div>
+                  </div>
+               </div>
+            </div>
+
+            <div className="bg-[#00f2ff]/5 border border-[#1a3a4a] p-4 space-y-3">
+               <span className="text-[9px] uppercase font-bold text-[#00f2ff] tracking-[0.2em] block mb-2">ECUACIONES BALÍSTICAS</span>
+               
+               <div className="space-y-2">
+                  <span className="text-[9px] text-[#0077ff] font-bold tracking-widest block uppercase border-b border-[#0077ff]/30 pb-1">Misil 1 (Silo Central)</span>
+                  <div className="bg-black/60 p-2 border border-white/10 font-mono text-[9px] text-white">
+                     <span className="text-[#0077ff]/60 block mb-1">Trayectoria Inicial:</span>
+                     {eqM1.initial}
+                  </div>
+                  <div className="bg-black/60 p-2 border border-white/10 font-mono text-[9px] text-white">
+                     <span className="text-emerald-400/60 block mb-1">Tangente Final (Impacto):</span>
+                     {eqM1.final}
+                  </div>
+               </div>
+
+               <div className="space-y-2 pt-2">
+                  <span className="text-[9px] text-[#0077ff] font-bold tracking-widest block uppercase border-b border-[#0077ff]/30 pb-1">Misil 2 (Silo Externo)</span>
+                  <div className="bg-black/60 p-2 border border-white/10 font-mono text-[9px] text-white">
+                     <span className="text-[#0077ff]/60 block mb-1">Trayectoria Inicial:</span>
+                     {eqM2.initial}
+                  </div>
+                  <div className="bg-black/60 p-2 border border-white/10 font-mono text-[9px] text-white">
+                     <span className="text-emerald-400/60 block mb-1">Tangente Final (Impacto):</span>
+                     {eqM2.final}
+                  </div>
+               </div>
+            </div>
+
+            <div className="bg-[#00f2ff]/5 border border-[#1a3a4a] p-4 space-y-2">
+               <span className="text-[9px] uppercase font-bold text-[#00f2ff] tracking-[0.2em] block mb-2">ANÁLISIS DE INTERCEPCIÓN</span>
+               <div className="text-[10px] leading-relaxed">
+                  <div className="flex justify-between items-center mb-1">
+                     <span className="opacity-60 italic">Distancia Mínima M1 a M2:</span>
+                     <span className="text-[#00f2ff] font-mono font-bold">{collision.distance.toFixed(4)} m</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                     <span className="opacity-60 italic">Tiempo de Colisión Estimado (tc):</span>
+                     <span className="text-white font-mono font-bold">{collision.time.toFixed(2)} s</span>
+                  </div>
+                  <div className="flex justify-between items-center mt-1">
+                     <span className="opacity-60 italic">Punto de Intercepción Objetivo:</span>
+                     <span className="text-emerald-400 font-mono font-bold">
+                       {targetPos[0].toFixed(1)}, {targetPos[1].toFixed(1)}, {targetPos[2].toFixed(1)}
+                     </span>
+                  </div>
+               </div>
+            </div>
+
+            {/* VUELO EN TIEMPO REAL */}
+            <div className="grid grid-cols-2 gap-2">
+               {[
+                 { label: 'VECTOR_X', value: currentCoords.x.toFixed(2), icon: ChevronRight },
+                 { label: 'VECTOR_Y', value: currentCoords.y.toFixed(2), icon: Activity },
+                 { label: 'VECTOR_Z', value: currentCoords.z.toFixed(2), icon: Zap },
+                 { label: 'T_FINAL', value: `${tMax}s`, icon: Shield }
+               ].map((item, i) => (
+                 <div key={i} className="bg-black/90 border border-[#00f2ff]/20 p-2 font-mono text-[9px] flex items-center space-x-2">
+                    <item.icon className="w-3 h-3 text-[#00f2ff]/40" />
+                    <div>
+                       <span className="opacity-40 block">{item.label}</span>
+                       <span className="text-[#00f2ff] font-bold text-[11px]">{item.value}</span>
+                    </div>
+                 </div>
+               ))}
+            </div>
+
+            <AnimatePresence>
+               {impacted && (
+                 <motion.div 
+                   initial={{ opacity: 0, scale: 0.9, y: 10 }}
+                   animate={{ opacity: 1, scale: 1, y: 0 }}
+                   className="bg-emerald-950/20 border border-emerald-400/50 p-4 mt-2 relative overflow-hidden"
+                 >
+                    <div className="absolute inset-0 bg-emerald-500/5 animate-pulse" />
+                     <div className="relative z-10 space-y-3">
+                        <div className="flex items-center justify-center space-x-2 text-emerald-400 border-b border-emerald-500/30 pb-2">
+                           <Target className="w-5 h-5 text-emerald-400" />
+                           <span className="text-sm font-black uppercase tracking-[0.2em]">INTERCEPCIÓN EXITOSA</span>
+                        </div>
+                        
+                        <div>
+                           <p className="text-[10px] text-emerald-100/80 mb-3">Los misiles interceptores han colisionado con el objetivo simultáneamente.</p>
+                           <span className="text-[9px] text-emerald-300 font-bold tracking-widest block mb-2 uppercase">Resumen del Evento:</span>
+                           <div className="space-y-1 font-mono text-[10px] bg-black/40 p-3 border border-emerald-500/20 rounded">
+                              <div className="flex justify-between"><span className="opacity-70">Tiempo de intercepción:</span> <span className="text-white">{tMax.toFixed(1)} s</span></div>
+                              <div className="flex justify-between"><span className="opacity-70">Punto de Destrucción:</span> <span className="text-white">[{targetPos[0].toFixed(0)}, {targetPos[1].toFixed(0)}, {targetPos[2].toFixed(0)}]</span></div>
+                              <div className="flex justify-between mt-2 pt-2 border-t border-emerald-500/20"><span className="opacity-70">Estado final:</span> <span className="text-emerald-400 font-bold">Objetivo neutralizado</span></div>
+                           </div>
+                           
+                           <div className="mt-4 space-y-2">
+                              <div className="flex items-center space-x-2"><div className="w-4 h-[2px] bg-[#ff2200]"></div><span className="text-[9px] opacity-70">Trayectoria de Inserción (Intruso)</span></div>
+                              <div className="flex items-center space-x-2"><div className="w-4 h-[2px] bg-[#0077ff]"></div><span className="text-[9px] opacity-70">Trayectoria Dual Interceptora</span></div>
+                           </div>
+                        </div>
+                    </div>
+                 </motion.div>
+               )}
+            </AnimatePresence>
+          </div>
+
+          <div className="pt-4 space-y-3">
+             <button 
+                onClick={initiateLaunch}
+                disabled={isLaunching}
+                className={cn(
+                  "w-full py-4 bg-[#00f2ff] text-black font-black uppercase tracking-[0.5em] text-xs transition-all",
+                  "hover:bg-white hover:shadow-[0_0_20px_white] active:scale-[0.98]",
+                  isLaunching && "opacity-50 cursor-not-allowed bg-slate-800 text-slate-500"
+                )}
+                style={{ clipPath: 'polygon(5% 0, 100% 0, 95% 100%, 0 100%)' }}
+             >
+                {isLaunching ? "SIMULANDO TRAYECTORIAS..." : "INICIAR SIMULACIÓN"}
+             </button>
+          </div>
+        </motion.div>
+      </div>
+
+      <div className="absolute top-6 right-6 z-10 flex flex-col items-end space-y-2 pointer-events-none opacity-40">
+         <div className="flex items-center space-x-2 text-[10px] font-mono tracking-widest text-[#00f2ff]">
+            <Activity className="w-3 h-3" />
+            <span>BIO_SIGNAL_ENCRYPTED</span>
+         </div>
+         <div className="w-32 h-[1px] bg-gradient-to-l from-[#00f2ff] to-transparent" />
+         <div className="flex items-center space-x-2 text-[10px] font-mono tracking-widest text-slate-500">
+            <ChevronRight className="w-3 h-3" />
+            <span>JERUSALEM_COORD_LOCKED</span>
+         </div>
+      </div>
+
+    </div>
+  );
+}
