@@ -246,6 +246,20 @@ export const calculateCustomTrajectory = (
   return points;
 };
 
+export const calculateInitialVelocity = (
+  start: [number, number, number],
+  target: [number, number, number],
+  a: [number, number, number],
+  t: number
+): [number, number, number] => {
+  if (t <= 0) return [0,0,0];
+  return [
+    (target[0] - start[0] - 0.5 * a[0] * t * t) / t,
+    (target[1] - start[1] - 0.5 * a[1] * t * t) / t,
+    (target[2] - start[2] - 0.5 * a[2] * t * t) / t
+  ];
+};
+
 /**
  * Calculates trajectory using vector analysis.
  * r(t) = P0 + V0t + 0.5at^2
@@ -378,4 +392,3 @@ export const calculateAnalyticalStats = (
 };
 
 export const formatVector = (v: number[]) => `⟨${v.map(n => n.toFixed(2)).join(', ')}⟩`;
-
