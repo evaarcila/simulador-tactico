@@ -4,7 +4,7 @@ import { Sphere, Trail, Float, Torus, Line, Html, Sparkles } from '@react-three/
 import * as THREE from 'three';
 import { TrajectoryPoint } from '../lib/physics';
 
-export const RealisticTerrain: React.FC<{ onGroundClick?: (pos: [number, number, number]) => void }> = ({ onGroundClick }) => {
+export const RealisticTerrain: React.FC = () => {
   const terrainGeometry = useMemo(() => {
     const size = 1500;
     const segments = 150; 
@@ -34,16 +34,7 @@ export const RealisticTerrain: React.FC<{ onGroundClick?: (pos: [number, number,
 
   return (
     <group>
-      <mesh 
-        geometry={terrainGeometry} 
-        rotation={[-Math.PI / 2, 0, 0]} 
-        position={[0, -10, 0]} 
-        receiveShadow
-        onClick={(e) => {
-          e.stopPropagation();
-          if (onGroundClick) onGroundClick([e.point.x, e.point.y, e.point.z]);
-        }}
-      >
+      <mesh geometry={terrainGeometry} rotation={[-Math.PI / 2, 0, 0]} position={[0, -10, 0]} receiveShadow>
         <meshStandardMaterial 
           color="#3a4f35" 
           roughness={0.9}
@@ -52,15 +43,7 @@ export const RealisticTerrain: React.FC<{ onGroundClick?: (pos: [number, number,
       </mesh>
       
       {/* Lake / Water area */}
-      <mesh 
-        rotation={[-Math.PI / 2, 0, 0]} 
-        position={[0, -11, 0]} 
-        receiveShadow
-        onClick={(e) => {
-          e.stopPropagation();
-          if (onGroundClick) onGroundClick([e.point.x, e.point.y, e.point.z]);
-        }}
-      >
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -11, 0]} receiveShadow>
         <planeGeometry args={[1500, 1500]} />
         <meshStandardMaterial color="#1a4b6e" roughness={0.1} metalness={0.8} transparent opacity={0.8} />
       </mesh>
@@ -131,16 +114,13 @@ export const Missile: React.FC<{ points: TrajectoryPoint[], currentTime: number,
     if (hasImpacted) return;
 
     // Determine position based on currentTime
-    let progress = tMax > 0 ? currentTime / tMax : 0;
-    if (isNaN(progress)) progress = 0;
-    progress = Math.max(0, Math.min(progress, 1));
-
+    const progress = Math.max(0, Math.min(currentTime / tMax, 1));
     const idx = Math.floor(progress * (points.length - 1));
     const nextIdx = Math.min(idx + 1, points.length - 1);
     const alpha = (progress * (points.length - 1)) % 1;
     
-    const p1 = points[idx]?.position || [0,0,0];
-    const p2 = points[nextIdx]?.position || [0,0,0];
+    const p1 = points[idx].position;
+    const p2 = points[nextIdx].position;
     
     if (meshRef.current) {
       meshRef.current.position.set(
