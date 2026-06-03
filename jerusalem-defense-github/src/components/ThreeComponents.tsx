@@ -131,13 +131,16 @@ export const Missile: React.FC<{ points: TrajectoryPoint[], currentTime: number,
     if (hasImpacted) return;
 
     // Determine position based on currentTime
-    const progress = Math.max(0, Math.min(currentTime / tMax, 1));
+    let progress = tMax > 0 ? currentTime / tMax : 0;
+    if (isNaN(progress)) progress = 0;
+    progress = Math.max(0, Math.min(progress, 1));
+
     const idx = Math.floor(progress * (points.length - 1));
     const nextIdx = Math.min(idx + 1, points.length - 1);
     const alpha = (progress * (points.length - 1)) % 1;
     
-    const p1 = points[idx].position;
-    const p2 = points[nextIdx].position;
+    const p1 = points[idx]?.position || [0,0,0];
+    const p2 = points[nextIdx]?.position || [0,0,0];
     
     if (meshRef.current) {
       meshRef.current.position.set(

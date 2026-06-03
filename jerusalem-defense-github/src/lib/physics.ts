@@ -252,11 +252,11 @@ export const calculateInitialVelocity = (
   a: [number, number, number],
   t: number
 ): [number, number, number] => {
-  if (t <= 0) return [0,0,0];
+  if (t <= 0 || isNaN(t)) return [0,0,0];
   return [
-    (target[0] - start[0] - 0.5 * a[0] * t * t) / t,
-    (target[1] - start[1] - 0.5 * a[1] * t * t) / t,
-    (target[2] - start[2] - 0.5 * a[2] * t * t) / t
+    (target[0] - start[0] - 0.5 * a[0] * t * t) / t || 0,
+    (target[1] - start[1] - 0.5 * a[1] * t * t) / t || 0,
+    (target[2] - start[2] - 0.5 * a[2] * t * t) / t || 0
   ];
 };
 

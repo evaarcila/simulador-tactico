@@ -5,7 +5,10 @@ import { Play, Pause, RotateCcw, Square, Box, Activity, ArrowUp, MapPin, Target,
 import { calculateCustomTrajectory, calculateCollision, calculateInitialVelocity, formatVector } from './lib/physics';
 import { Missile, RealisticTerrain, HtmlLabels } from './components/ThreeComponents';
 
-const parseVec = (s: string) => s.split(',').map(n => parseFloat(n) || 0) as [number, number, number];
+const parseVec = (s: string) => {
+  const parts = s.split(',').map(n => { const num = parseFloat(n); return isNaN(num) ? 0 : num; });
+  return [parts[0] || 0, parts[1] || 0, parts[2] || 0] as [number, number, number];
+};
 
 export default function App() {
   const [mode, setMode] = useState<'NONE' | 'M1' | 'M2' | 'TARGET'>('NONE');
